@@ -17,8 +17,8 @@ roles = {
 }
 
 print("Choose the assistant's behavior:")
-for number, (role_name, _) in roles.items():
-    print(f"{number}. {role_name}")
+for number, (role_name, messages) in roles.items():
+    print(f"{number}. {role_name} . {messages}")
 
 while True:
     role_choice = input("Enter a number (1-5): ").strip()
