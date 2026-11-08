@@ -1,13 +1,23 @@
+"""
+Day 21.03 - Frontend Agent Integration.
+
+Defines the tool functions (web search, webpage reading, note taking and
+verification) that the research agent in agent.py calls while
+investigating a topic. These are plain Python functions; agent.py passes
+them to Ollama's tool-calling API so the model can invoke them by name.
+"""
+
 import requests
 import json
-
 
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
 from ollama import chat
 
+# In-memory store of research notes collected during the current run.
 research_notes = []
 MODEL = "qwen3:4b"
+
 
 def search_web(query, max_results=5):
     """
@@ -21,8 +31,11 @@ def search_web(query, max_results=5):
         A list of search results.
     """
 
+    # Defensively coerce to int in case the model passes it as a string.
     max_results = int(max_results)
 
+    # DuckDuckGo's HTML-only endpoint doesn't need JavaScript, so it's easy
+    # to scrape directly with requests + BeautifulSoup.
     response = requests.get(
         "https://html.duckduckgo.com/html/",
         params={"q": query},
@@ -41,6 +54,8 @@ def search_web(query, max_results=5):
 
     results = []
 
+    # Each ".result" element is one search hit; keep only the first
+    # max_results of them.
     for result in soup.select(
         ".result"
     )[:max_results]:
@@ -97,6 +112,7 @@ def read_webpage(url):
         Extracted webpage text or an error message.
     """
 
+    # Protocol-relative URLs ("//example.com") need a scheme added.
     if url.startswith("//"):
         url = "https:" + url
 
@@ -123,7 +139,8 @@ def read_webpage(url):
         response.raise_for_status()
 
     except requests.exceptions.RequestException as e:
-
+        # Return a structured error instead of raising, so the agent loop
+        # can keep running and feed this back to the model as a tool result.
         return {
             "status": "error",
             "url": url,
@@ -135,6 +152,7 @@ def read_webpage(url):
         "html.parser"
     )
 
+    # Strip non-content elements so we extract readable body text only.
     for element in soup(
         ["script", "style", "noscript"]
     ):
@@ -145,6 +163,7 @@ def read_webpage(url):
         strip=True
     )
 
+    # Cap length to keep the model's context window manageable.
     return text[:12000]
 
 
@@ -193,11 +212,11 @@ def get_research_notes():
     Return all research notes collected so far.
     """
 
+    # Return copies so callers can't mutate the internal store directly.
     return [
         note.copy()
         for note in research_notes
     ]
-
 
 
 def mark_note_verified(
@@ -208,6 +227,7 @@ def mark_note_verified(
     Mark a matching research note as verified.
     """
 
+    # Exact match on both source and finding text.
     for note in research_notes:
 
         if (
@@ -226,6 +246,7 @@ def mark_note_verified(
         "finding": finding
     }
 
+
 def verify_finding(
     source,
     finding,
@@ -235,6 +256,8 @@ def verify_finding(
     Check whether evidence supports a finding.
     """
 
+    # Ask the model to judge, as strict JSON, whether the evidence
+    # actually supports the finding.
     response = chat(
         model=MODEL,
         messages=[
@@ -273,6 +296,7 @@ def verify_finding(
         )
 
     return result
+
 
 def get_verified_research_notes():
     """

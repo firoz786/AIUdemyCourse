@@ -1,3 +1,12 @@
+"""
+Day04_02_ToolManager_RegistrationAndExecution: defines the local Python
+functions ("tools") that the ToolManager can register and run on behalf of
+the user - getting the current time, rolling a dice, and generating a secure
+password with guaranteed character variety. These are plain functions with
+no AI involved; the "intelligence" is in how ToolManager decides when to
+call them.
+"""
+
 import random
 import secrets
 import string
@@ -19,6 +28,8 @@ def get_secret_password(length: int = 12) -> str:
     if length < 4:
         raise ValueError("Password length must be at least 4 characters.")
 
+    # Guarantee the password has at least one character from each of these
+    # groups (lowercase, uppercase, digit, punctuation) for extra strength.
     character_groups = (
         string.ascii_lowercase,
         string.ascii_uppercase,
@@ -26,10 +37,14 @@ def get_secret_password(length: int = 12) -> str:
         string.punctuation,
     )
     alphabet = "".join(character_groups)
+    # Start with one guaranteed character from each group...
     password_characters = [secrets.choice(group) for group in character_groups]
+    # ...then fill the rest of the length with random characters from the
+    # combined alphabet.
     password_characters.extend(
         secrets.choice(alphabet) for _ in range(length - len(password_characters))
     )
+    # Shuffle so the guaranteed characters aren't always in the same order.
     secrets.SystemRandom().shuffle(password_characters)
 
     return "".join(password_characters)

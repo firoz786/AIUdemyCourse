@@ -1,12 +1,23 @@
+"""
+Day 11.4 - Memory Advanced & Multi-Turn.
+
+A small standalone script to manually verify the memory module: it
+(re)creates the database, saves a few sample memories, then searches for
+memories related to "What is my name" and prints the matches with their
+similarity scores. This demonstrates the kind of cross-turn recall the
+multi-turn agent relies on.
+"""
+
 from memory import (
     create_database,
     save_memory,
     search_semantic_memories
 )
 
-
+# Make sure the memories table exists before writing to it.
 create_database()
 
+# Seed a few sample memories to search over.
 save_memory(
     "My name is Pankaj.",
     "Nice to meet you, Pankaj."
@@ -22,7 +33,7 @@ save_memory(
     "MCP allows AI applications to use tools."
 )
 
-
+# Search for memories relevant to this query, ordered by similarity score.
 results = search_semantic_memories(
     "What is my name"
 )
@@ -34,3 +45,4 @@ for result in results:
     print("\nScore:", result["score"])
     print("User:", result["user_message"])
     print("Assistant:", result["assistant_message"])
+

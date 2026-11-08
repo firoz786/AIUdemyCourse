@@ -1,12 +1,20 @@
+"""
+Day 11.3 - Memory Extraction & Context Awareness.
+
+This module implements the "planner" brain of the agent: given the
+current state (including any relevant long-term memories) and the list
+of tools available from the MCP server, it asks an LLM to decide which
+single pending task to work on next and which tool to use for it.
+"""
+
 import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
-
 load_dotenv()
 
-
+# Shared OpenAI-compatible client used to make planning decisions.
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
     api_key=os.getenv("API_KEY")
@@ -14,6 +22,7 @@ client = OpenAI(
 
 
 def build_tool_descriptions(tools):
+    """Turn the list of MCP tools into a readable text block for the prompt."""
 
     descriptions = ""
 
@@ -33,6 +42,8 @@ Description:
 
 
 def planner(state, tools):
+    """Ask the LLM which pending task to tackle next and which tool to use,
+    returning either a "TASK:"/"TOOL:" pair or the word FINISH."""
 
     tool_descriptions = build_tool_descriptions(tools)
 
@@ -112,6 +123,7 @@ TOOL: <tool_name>
 Next Decision:
 """
 
+    # Ask the LLM to make the next planning decision based on the prompt.
     response = client.chat.completions.create(
         model=os.getenv("MODEL"),
         messages=[

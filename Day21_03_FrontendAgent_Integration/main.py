@@ -1,3 +1,13 @@
+"""
+Day 21.03 - Frontend Agent Integration.
+
+FastAPI server that connects the static web frontend to the research
+agent: it serves the frontend's HTML/CSS/JS, and exposes a `/chat` endpoint
+that runs the (blocking) research agent in a thread pool and returns its
+final report as a plain JSON response (no streaming yet — that comes in
+later lessons).
+"""
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +21,8 @@ from schemas import ChatRequest, ChatResponse
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Runs once at startup and once at shutdown; used here just for
+    # console logging of the app lifecycle.
     print("Starting Research AI application")
     yield
     print("Shutting down Research AI application")
@@ -22,6 +34,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Allow the browser frontend to call this API without CORS errors during
+# local development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,6 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve the frontend's static assets (CSS/JS) under /static.
 app.mount(
     "/static",
     StaticFiles(directory="frontend"),
@@ -38,6 +53,7 @@ app.mount(
 
 @app.get("/")
 async def home():
+    # Serve the frontend's main HTML page when the browser visits "/".
     return FileResponse("frontend/index.html")
 
 
@@ -48,6 +64,7 @@ async def health():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    # Reject empty/whitespace-only messages before doing any real work.
     if not request.message.strip():
         raise HTTPException(
             status_code=400,
@@ -55,6 +72,8 @@ async def chat(request: ChatRequest):
         )
 
     try:
+        # run_agent is a blocking/synchronous function, so it's offloaded
+        # to a thread pool to avoid blocking FastAPI's async event loop.
         result = await run_in_threadpool(run_agent, request.message)
 
         return ChatResponse(

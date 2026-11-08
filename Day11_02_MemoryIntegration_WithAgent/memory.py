@@ -1,13 +1,22 @@
+"""
+Day 11.2 - Memory Integration With Agent.
+
+This module gives the agent long-term memory backed by a local SQLite
+database. It stores each user/assistant exchange together with a vector
+embedding of the text, and lets the agent later search those memories by
+meaning (semantic similarity) rather than exact keyword matching.
+"""
+
 import json
 import sqlite3
 
 import numpy as np
 from openai import OpenAI
 
-
+# Path to the local SQLite file used to persist memories.
 DATABASE = "memory.db"
 
-
+# Local embedding model served by Ollama (used only to turn text into vectors).
 embedding_client = OpenAI(
     base_url="http://localhost:11434/v1",
     api_key="ollama"
@@ -15,6 +24,7 @@ embedding_client = OpenAI(
 
 
 def create_database():
+    """Create the `memories` table if it doesn't already exist."""
     connection = sqlite3.connect(DATABASE)
     cursor = connection.cursor()
 
@@ -33,15 +43,17 @@ def create_database():
 
 
 def create_embedding(text):
+    """Convert text into a numeric embedding vector using the local model."""
     response = embedding_client.embeddings.create(
         model="nomic-embed-text",
         input=text
     )
-    
+
     return response.data[0].embedding
 
 
 def cosine_similarity(vector1, vector2):
+    """Measure how similar two embedding vectors are (1.0 = identical direction)."""
     v1 = np.array(vector1)
     v2 = np.array(vector2)
 
@@ -52,10 +64,11 @@ def cosine_similarity(vector1, vector2):
 
 
 def save_memory(user_message, assistant_message):
+    """Embed and persist one user/assistant exchange as a memory row."""
     text = user_message + "\n" + assistant_message
 
+    # Turn the combined exchange into an embedding we can later compare against.
     embedding = create_embedding(text)
-    
 
     connection = sqlite3.connect(DATABASE)
     cursor = connection.cursor()
@@ -73,6 +86,7 @@ def save_memory(user_message, assistant_message):
         (
             user_message,
             assistant_message,
+            # Embeddings are stored as JSON text since SQLite has no vector type.
             json.dumps(embedding)
         )
     )
@@ -86,11 +100,16 @@ def search_semantic_memories(
     top_k=3,
     threshold=0.20
 ):
+    """Return the top matching memories whose similarity to `query` meets
+    the threshold, most similar first."""
+    # Embed the incoming query so it can be compared to stored memories.
     query_embedding = create_embedding(query)
 
     connection = sqlite3.connect(DATABASE)
     cursor = connection.cursor()
 
+    # Load every stored memory; with a small demo database this simple
+    # "scan everything" approach is fine (no vector index needed).
     cursor.execute("""
         SELECT
             user_message,
@@ -113,15 +132,18 @@ def search_semantic_memories(
         created_at
     ) in rows:
 
+        # Decode the stored embedding back into a list of numbers.
         memory_embedding = json.loads(
             embedding_json
         )
 
+        # Compare the query's embedding against this memory's embedding.
         score = cosine_similarity(
             query_embedding,
             memory_embedding
         )
-        
+
+        # Only keep memories that are similar enough to be relevant.
         if score >= threshold:
             results.append({
                 "user_message": user_message,
@@ -130,12 +152,11 @@ def search_semantic_memories(
                 "score": score
             })
 
+    # Put the most relevant (highest score) memories first.
     results.sort(
         key=lambda item: item["score"],
         reverse=True
     )
-
-    #print(results)
 
     return results[:top_k]
 

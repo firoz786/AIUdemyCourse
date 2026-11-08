@@ -1,3 +1,11 @@
+"""
+Day 20.06 - Production Complete Agent API (evaluation).
+
+A small fixed set of test questions paired with the tool each question is
+expected to trigger. Used by run_evaluation.py to automatically sanity
+check the agent's tool-selection behavior.
+"""
+
 test_cases = [
     {
         "question": "What is the current time?",

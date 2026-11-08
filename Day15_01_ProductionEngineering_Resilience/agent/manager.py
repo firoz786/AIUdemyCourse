@@ -1,15 +1,20 @@
-# Remove from openai import OpenAI
-# Remove from dotenv import # 
-# Remove load_dotenv
-# Remove import os
-# Added llm below
+"""
+Day 15 - Production Engineering & Resilience: Multi-Agent Manager/Orchestrator.
+
+This file is the heart of the resilient multi-agent system: `run_manager`
+validates the incoming task, then repeatedly asks an LLM-powered
+`choose_worker` function which worker (research, coding, review, or finish)
+should act next, routes to that worker, and tracks revision history so the
+coding/review loop can't run forever (bounded by MAX_REVISIONS). It ties
+together config, logging, validation, and resilient LLM calls (via
+call_llm's built-in retry/backoff) into one cohesive, observable workflow.
+"""
+
 from llm import call_llm
-# Added validation below
 from validation import (
     validate_task
 )
 
-# Added Logger
 from logger import logger
 
 from workers.research_agent import research
@@ -17,26 +22,14 @@ from workers.coding_agent import write_code
 from workers.reviewer_agent import review
 from agent.state import create_state
 
-
-# Remove load_dotenv()
-
-
-# Remove client = OpenAI(
-#  base_url=os.getenv("BASE_URL"),
-#   api_key=os.getenv("API_KEY")
-# ) 
-
-
-# Remove MAX_REVISIONS = 3
-# Added below line
 from config import (
     MAX_REVISIONS
 )
 
 
-
 def choose_worker(state):
-
+    # Build a prompt that gives the LLM full context of the current workflow
+    # state (what's been done so far) so it can decide the next step.
     prompt = f"""
 You are the Manager Agent.
 
@@ -98,7 +91,7 @@ coding
 review
 finish
 """
-    # Modified to call_llm
+    # Ask the LLM (with built-in retry/backoff) which worker to run next.
     response = call_llm(
         messages=[
             {
@@ -108,28 +101,31 @@ finish
         ]
     )
 
+    # Normalize the reply (strip whitespace, lowercase) so comparisons like
+    # `worker == "research"` below are reliable.
     return response.strip().lower()
-    
 
 
 def run_manager(task):
-    # Added validate_task here
+    # Validate the task first (non-empty, not too long) before doing any
+    # expensive LLM work - fail fast on bad input.
     task = validate_task(task)
     state = create_state(
         task
     )
-    # Added logger here
+    # Record the start of the workflow for observability/debugging.
     logger.info(
     f"Starting manager for task: {task}"
     )
 
-
+    # Main orchestration loop: keep asking "what's next?" until a worker
+    # tells us to finish (or we hit the revision cap).
     while True:
 
         worker = choose_worker(
             state
         )
-        # Logger added here
+        # Log and print the manager's decision so progress is visible.
         logger.info(
     f"Manager selected: {worker}"
         )
@@ -139,7 +135,7 @@ def run_manager(task):
         )
 
         if worker == "research":
-
+            # Run the research worker and store its findings in state.
             state["research"] = research(
                 state["task"]
             )
@@ -149,7 +145,8 @@ def run_manager(task):
             )
 
         elif worker == "coding":
-
+            # Safety valve: if we've already hit the max revisions, stop
+            # instead of looping forever on a stubborn review.
             if (
             state["review"]
             and state["revision_count"]
@@ -159,14 +156,15 @@ def run_manager(task):
                 print(
                 "Maximum revisions reached."
                 )
-                # Added Logger
+                # Warn in the logs since this is an abnormal/bounded exit.
                 logger.warning(
         f"Maximum steps reached: {MAX_REVISIONS}"
                 )
 
-
                 break
 
+            # Pull feedback from the previous review (if any) so the coding
+            # agent knows what to fix.
             feedback = ""
 
             if state["review"]:
@@ -178,14 +176,19 @@ def run_manager(task):
                 ""
                 )
 
+            # Track how many revision cycles have happened so far.
             state["revision_count"] += 1
 
+            # Generate (or regenerate) the code using task, research and
+            # any reviewer feedback.
             state["code"] = write_code(
             state["task"],
             state["research"],
             feedback
             )
 
+            # Clear the previous review since the code has changed and
+            # needs to be reviewed again.
             state["review"] = ""
 
             state["history"].append(
@@ -193,7 +196,7 @@ def run_manager(task):
             )
 
         elif worker == "review":
-
+            # Ask the reviewer agent to check the latest code.
             state["review"] = review(
                 state["task"],
                 state["code"]
@@ -204,7 +207,7 @@ def run_manager(task):
             )
 
         elif worker == "finish":
-            # Added Logger here
+            # The manager decided the workflow is complete - stop looping.
             logger.info(
             "Manager finished the workflow."
             )
@@ -212,7 +215,7 @@ def run_manager(task):
             break
 
         else:
-
+            # Defensive check: the LLM returned something we don't recognize.
             raise ValueError(
                 f"Unknown worker: {worker}"
             )

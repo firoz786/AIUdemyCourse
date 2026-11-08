@@ -1,3 +1,11 @@
+"""
+Day 17.02 - CrewAI with MCP Tool Integration.
+
+Assembles the researcher/coder/reviewer agents and their tasks into a
+sequential `Crew`, just like Day 17.01, except the researcher here has
+access to a real MCP-backed tool (see agents.py / mcp_tools.py).
+"""
+
 from crewai import Crew, Process
 
 from agents import (
@@ -12,6 +20,8 @@ from tasks import (
     review_task
 )
 
+# The crew ties agents + tasks together and runs them one after another
+# (Process.sequential), passing each task's output along as context.
 crew = Crew(
     agents=[
         researcher,

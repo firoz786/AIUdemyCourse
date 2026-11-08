@@ -1,3 +1,13 @@
+"""
+Day 21.03 - Frontend Agent Integration.
+
+Defines the autonomous research agent used by this lesson's FastAPI
+frontend. The agent first asks the model for a short research plan, then
+runs a strict tool-calling loop (search -> read -> note -> verify) until it
+has collected at least one verified finding, and finally asks the model to
+write up a structured Markdown report from those findings.
+"""
+
 from ollama import chat
 
 from tools import (
@@ -12,7 +22,8 @@ from tools import (
 
 MODEL = "qwen3:4b"
 
-
+# Lookup table mapping each tool's name (as the model will request it) to
+# the actual Python function that executes it.
 AVAILABLE_TOOLS = {
     "search_web": search_web,
     "read_webpage": read_webpage,
@@ -21,7 +32,8 @@ AVAILABLE_TOOLS = {
     "verify_finding": verify_finding
 }
 
-
+# The same tools as a list, passed to chat(..., tools=TOOLS) so Ollama
+# knows which functions the model may call and with what signatures.
 TOOLS = [
     search_web,
     read_webpage,
@@ -40,6 +52,8 @@ def generate_report(
     verified research findings.
     """
 
+    # Flatten the verified notes into one text block to give the model as
+    # grounding context (so it only writes about things we actually found).
     research_text = "\n\n".join(
         [
             (
@@ -106,6 +120,8 @@ def research_agent(
     findings before it is allowed to finish.
     """
 
+    # Ask the model for a short, ordered research plan before starting the
+    # main tool-calling loop.
     plan = create_research_plan(
         user_request
     )
@@ -115,6 +131,8 @@ def research_agent(
     print("=" * 60)
     print(plan)
 
+    # System message sets strict rules: search, then read, then note, then
+    # verify, and don't stop without at least one verified finding.
     messages = [
         {
             "role": "system",
@@ -160,6 +178,8 @@ def research_agent(
             f"\n--- Agent Step {step + 1} ---"
         )
 
+        # Ask the model what to do next, given the full conversation
+        # history (including prior tool results).
         response = chat(
             model=MODEL,
             messages=messages,
@@ -249,6 +269,8 @@ def research_agent(
                 f"Arguments: {arguments}"
             )
 
+            # Look up and run the requested tool with the model-supplied
+            # arguments.
             tool_function = (
                 AVAILABLE_TOOLS.get(
                     tool_name
@@ -282,6 +304,8 @@ def research_agent(
                         f"Tool error: {e}"
                     )
 
+            # Feed the tool's result back into the conversation so the
+            # model can use it on its next turn.
             messages.append({
                 "role": "tool",
                 "content": str(result),
@@ -302,6 +326,8 @@ def create_research_plan(
     Create a concise research plan.
     """
 
+    # Ask the model to turn the raw user request into an ordered list of
+    # research objectives, used to steer the main agent loop above.
     response = chat(
         model=MODEL,
         messages=[
@@ -332,7 +358,8 @@ def create_research_plan(
 
 
 def run_agent(request):
-
+    # Synchronous entry point used by main.py's /chat endpoint (run inside
+    # a thread pool since this call blocks).
     research_agent(
         request,
         max_steps=100

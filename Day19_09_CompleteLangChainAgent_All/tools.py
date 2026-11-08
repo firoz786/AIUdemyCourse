@@ -1,3 +1,13 @@
+"""
+Day 19.09 - Local LangChain tools (non-MCP version).
+
+This module defines the same three utility tools as server.py
+(current_time, roll_dice, generate_password), but as plain LangChain
+`@tool`-decorated Python functions instead of MCP tools. It is useful for
+comparing "local tool" vs "MCP tool" integration styles, and is used by
+test_tool.py.
+"""
+
 from langchain_core.tools import tool
 
 
@@ -24,12 +34,14 @@ def generate_password(length: int = 12) -> str:
     import secrets
     import string
 
+    # Pool of characters the generated password can draw from.
     characters = (
         string.ascii_letters
         + string.digits
         + "!@#$%^&*"
     )
 
+    # Use a cryptographically secure random choice for each character.
     return "".join(
         secrets.choice(characters)
         for _ in range(length)

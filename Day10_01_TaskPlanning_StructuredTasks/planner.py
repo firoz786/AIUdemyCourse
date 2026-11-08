@@ -1,12 +1,22 @@
+"""
+Day10_01_TaskPlanning_StructuredTasks - planner.py
+
+This is the "Reason" step for the structured task-planning agent. Given
+the current state (which includes the full task list and what's pending,
+completed, observed, and resulted so far), it asks the LLM to pick exactly
+one pending task and the best tool to complete it -- or reply FINISH once
+no tasks remain.
+"""
+
 import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
-
+# Load environment variables (e.g. BASE_URL, API_KEY, MODEL) from .env.
 load_dotenv()
 
-
+# Create the AI client used to talk to the LLM provider.
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
     api_key=os.getenv("API_KEY")
@@ -14,7 +24,8 @@ client = OpenAI(
 
 
 def build_tool_descriptions(tools):
-
+    # Turn the list of MCP tool objects into one readable text block the
+    # LLM can read, listing each tool's name and description.
     descriptions = ""
 
     for tool in tools:
@@ -33,9 +44,12 @@ Description:
 
 
 def planner(state, tools):
-
+    # Build the tool list text to embed in the prompt below.
     tool_descriptions = build_tool_descriptions(tools)
 
+    # The prompt gives the LLM the full picture: the request, all tasks,
+    # which ones are still pending, what's been done/observed/resulted so
+    # far, and the available tools -- then asks for exactly one decision.
     prompt = f"""
 You are an AI planner.
 
@@ -121,4 +135,6 @@ Next Decision:
         ]
     )
 
+    # The LLM's reply is expected to be either "FINISH" or the two-line
+    # "TASK: ... / TOOL: ..." format parsed by loop.parse_decision().
     return response.choices[0].message.content.strip()

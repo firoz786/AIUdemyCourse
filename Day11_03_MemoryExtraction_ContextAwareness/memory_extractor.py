@@ -1,12 +1,21 @@
+"""
+Day 11.3 - Memory Extraction & Context Awareness.
+
+This module is the new piece introduced in this stage: an LLM-based
+"memory extractor" that looks at one finished user/assistant exchange and
+decides whether it contains a reusable long-term fact about the user
+(like a preference, goal, or skill) worth remembering, as opposed to a
+one-off question that shouldn't clutter long-term memory.
+"""
+
 import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
-
 load_dotenv()
 
-
+# Shared OpenAI-compatible client used to extract long-term facts.
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
     api_key=os.getenv("API_KEY")
@@ -17,6 +26,8 @@ def extract_memory(
     user_message,
     assistant_message
 ):
+    """Ask the LLM to pull a reusable fact out of one exchange, or return
+    the string "NONE" if nothing is worth remembering long-term."""
     prompt = f"""
 You are a memory extraction system.
 
@@ -57,6 +68,7 @@ return:
 NONE
 """
 
+    # Ask the LLM to decide and return either the fact text or "NONE".
     response = client.chat.completions.create(
         model=os.getenv("MODEL"),
         messages=[

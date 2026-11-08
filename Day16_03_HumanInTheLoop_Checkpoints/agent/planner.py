@@ -1,9 +1,21 @@
+"""
+Day 16.03 - Human-in-the-Loop Checkpoints (LangGraph).
+
+This module is the "brain" of the agent loop: it asks an LLM (via the
+OpenAI-compatible API) to decide, step by step, which single tool to run
+next based on the user's request, what's already been done, and what was
+observed so far. It returns either a tool name or the literal "FINISH".
+"""
+
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
 
+# Load environment variables (BASE_URL, API_KEY, MODEL) from a .env file.
 load_dotenv()
 
+# A single shared OpenAI-compatible client, configured from the environment
+# so this demo can work with OpenAI or any compatible local/remote endpoint.
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
     api_key=os.getenv("API_KEY")
@@ -11,11 +23,11 @@ client = OpenAI(
 
 
 def build_tool_descriptions(tools):
+    """Turn the MCP tool list into a readable block of text for the LLM prompt."""
 
     descriptions = ""
 
     for tool in tools:
-
         descriptions += f"""
 Tool:
 {tool.name}
@@ -28,10 +40,14 @@ Description:
 
     return descriptions
 
+
 def planner(state, tools):
+    """Ask the LLM which single next action to take, given the current state."""
 
     tool_descriptions = build_tool_descriptions(tools)
 
+    # The prompt gives the LLM everything it needs to make one decision:
+    # the user's goal, what's already happened, and the tools it can pick from.
     prompt = f"""
 You are an AI Planner.
 
@@ -75,5 +91,6 @@ Next Action:
         ]
     )
 
+    # Strip whitespace so the returned value is a clean tool name or "FINISH".
     return response.choices[0].message.content.strip()
 

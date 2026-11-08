@@ -1,3 +1,13 @@
+"""
+Day 21.01 - Frontend Web UI.
+
+Defines all the tool functions the research agent can call: searching the
+web, reading a webpage's text, storing/listing research notes, and
+verifying a finding against its evidence using the LLM. These are the
+building blocks the agent in agent.py combines into an autonomous research
+loop.
+"""
+
 import json
 from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlparse
@@ -6,6 +16,7 @@ import requests
 from bs4 import BeautifulSoup
 from ollama import chat
 
+# In-memory store of research notes collected during the current run.
 _RESEARCH_NOTES: List[Dict[str, Any]] = []
 MODEL = "qwen3:4b"
 
@@ -19,11 +30,16 @@ def clear_research_notes() -> None:
 def search_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     """Search the web using DuckDuckGo HTML UI."""
     try:
+        # Defensively coerce max_results to an int in case the model
+        # passes it as a string.
         max_results = int(max_results)
     except (ValueError, TypeError):
         max_results = 5
 
     try:
+        # DuckDuckGo's HTML-only endpoint is used because it doesn't
+        # require JavaScript to render search results, making it easy to
+        # scrape with BeautifulSoup.
         response = requests.get(
             "https://html.duckduckgo.com/html/",
             params={"q": query},
@@ -37,6 +53,8 @@ def search_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     soup = BeautifulSoup(response.text, "html.parser")
     results = []
 
+    # Each ".result" element is one search hit; take only the first
+    # `max_results` of them.
     for result in soup.select(".result")[:max_results]:
         title_elem = result.select_one(".result__title")
         link_elem = result.select_one(".result__a")
@@ -47,7 +65,9 @@ def search_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
 
         raw_url = link_elem.get("href", "")
         parsed = urlparse(raw_url)
-        
+
+        # DuckDuckGo wraps outbound links in a redirect URL; unwrap it to
+        # get the real destination URL (stored in the "uddg" query param).
         if "duckduckgo.com" in parsed.netloc:
             qs = parse_qs(parsed.query)
             clean_url = qs.get("uddg", [raw_url])[0]
@@ -65,9 +85,12 @@ def search_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
 
 def read_webpage(url: str) -> str:
     """Extract body text from a URL."""
+    # Protocol-relative URLs ("//example.com") need a scheme to be usable
+    # with requests.
     if url.startswith("//"):
         url = "https:" + url
 
+    # Unwrap a DuckDuckGo redirect URL to the real page URL, same as above.
     parsed_url = urlparse(url)
     if "duckduckgo.com" in parsed_url.netloc:
         params = parse_qs(parsed_url.query)
@@ -86,10 +109,14 @@ def read_webpage(url: str) -> str:
 
     soup = BeautifulSoup(response.text, "html.parser")
 
+    # Strip out non-content elements so the extracted text is just the
+    # readable article/body content.
     for element in soup(["script", "style", "noscript", "header", "footer", "nav"]):
         element.decompose()
 
     text = soup.get_text("\n", strip=True)
+    # Cap the extracted text length to keep it from blowing the model's
+    # context window.
     return text[:12000] if len(text) > 12000 else text
 
 
@@ -110,6 +137,7 @@ def add_research_note(source: str, finding: str, evidence: str) -> Dict[str, str
 
 def get_research_notes() -> List[Dict[str, Any]]:
     """Return all stored notes."""
+    # Return copies so callers can't accidentally mutate internal state.
     return [note.copy() for note in _RESEARCH_NOTES]
 
 
@@ -118,6 +146,8 @@ def mark_note_verified(source: str, finding: str) -> Dict[str, str]:
     clean_finding = finding.strip().lower()
     clean_source = source.strip().lower()
 
+    # Primary match: look for a note whose finding or source is a substring
+    # match (handles minor wording differences from the model).
     for note in _RESEARCH_NOTES:
         note_finding = note["finding"].strip().lower()
         note_source = note["source"].strip().lower()
@@ -127,6 +157,8 @@ def mark_note_verified(source: str, finding: str) -> Dict[str, str]:
             note["verified"] = True
             return {"status": "verified", "finding": note["finding"]}
 
+    # Fallback: if nothing matched exactly, just verify the oldest
+    # unverified note so the agent can still make forward progress.
     unverified = [n for n in _RESEARCH_NOTES if not n["verified"]]
     if unverified:
         unverified[0]["verified"] = True
@@ -138,6 +170,8 @@ def mark_note_verified(source: str, finding: str) -> Dict[str, str]:
 def verify_finding(source: str, finding: str, evidence: str) -> Dict[str, Any]:
     """Verify finding using Ollama."""
     try:
+        # Ask the model to judge whether the evidence actually supports
+        # the finding, returning strict JSON we can parse.
         response = chat(
             model=MODEL,
             messages=[
@@ -158,6 +192,8 @@ def verify_finding(source: str, finding: str, evidence: str) -> Dict[str, Any]:
         )
         result = json.loads(response.message.content)
     except Exception as err:
+        # If the model call or JSON parsing fails, default to treating the
+        # finding as supported so the agent isn't permanently stuck.
         result = {
             "supported": True,
             "explanation": f"Auto-verified due to response parsing fallback: {str(err)}"
@@ -172,7 +208,7 @@ def verify_finding(source: str, finding: str, evidence: str) -> Dict[str, Any]:
 def get_verified_research_notes() -> List[Dict[str, Any]]:
     """Return verified notes."""
     return [
-        note.copy() 
-        for note in _RESEARCH_NOTES 
+        note.copy()
+        for note in _RESEARCH_NOTES
         if note.get("verified", False)
     ]

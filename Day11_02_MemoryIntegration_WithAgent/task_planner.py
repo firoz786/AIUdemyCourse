@@ -1,12 +1,20 @@
+"""
+Day 11.2 - Memory Integration With Agent.
+
+This module implements the "task decomposition" step that runs before
+the main agent loop: it asks an LLM to break the user's request into an
+ordered list of small, concrete tasks (or no tasks at all, if the
+request can be answered directly without using any tools).
+"""
+
 import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
-
 load_dotenv()
 
-
+# Shared OpenAI-compatible client used to decompose requests into tasks.
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
     api_key=os.getenv("API_KEY")
@@ -14,6 +22,8 @@ client = OpenAI(
 
 
 def decompose_task(user_request):
+    """Ask the LLM to split `user_request` into an ordered task list,
+    returning an empty list when no tools are needed at all."""
 
     prompt = f"""
 You are an AI task planner.
@@ -43,6 +53,7 @@ User Request:
 {user_request}
 """
 
+    # Ask the LLM to decompose the request into a task list (or NONE).
     response = client.chat.completions.create(
         model=os.getenv("MODEL"),
         messages=[
@@ -61,6 +72,7 @@ User Request:
 
     tasks = []
 
+    # Turn the LLM's multi-line reply into a clean list of task strings.
     for line in result.splitlines():
 
         line = line.strip()

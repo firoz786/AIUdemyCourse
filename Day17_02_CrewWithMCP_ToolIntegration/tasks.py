@@ -1,3 +1,12 @@
+"""
+Day 17.02 - CrewAI with MCP Tool Integration.
+
+Defines the three tasks for the sequential crew. The research task now
+explicitly instructs the researcher agent to call the MCP "Current Time"
+tool before finishing, so the final output includes a real timestamp
+fetched via MCP rather than one the LLM makes up.
+"""
+
 from crewai import Task
 
 from agents import (
@@ -6,7 +15,8 @@ from agents import (
     reviewer
 )
 
-
+# Step 1: the researcher explains AI agent concepts AND must call the MCP
+# current-time tool, proving the tool integration actually happened.
 research_task = Task(
     description=(
         "Research autonomous AI agents. "
@@ -24,7 +34,7 @@ research_task = Task(
     agent=researcher
 )
 
-
+# Step 2: the coder writes example code, using the research as context.
 coding_task = Task(
     description=(
         "Using the research provided by "
@@ -41,7 +51,7 @@ coding_task = Task(
     ]
 )
 
-
+# Step 3: the reviewer critiques the code, using the coding task as context.
 review_task = Task(
     description=(
         "Review the Python code produced "

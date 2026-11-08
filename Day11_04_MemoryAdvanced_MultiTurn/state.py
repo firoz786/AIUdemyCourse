@@ -1,4 +1,16 @@
+"""
+Day 11.4 - Memory Advanced & Multi-Turn.
+
+This module defines the shared "state" dictionary that flows through the
+whole agent loop, plus small helper functions to read and update it. The
+state tracks the user's request, the task list, actions taken, tool
+observations, intermediate results, and the relevant long-term memories
+retrieved for this conversation.
+"""
+
+
 def create_state(user_request, max_steps=5):
+    """Build a fresh state dict for a brand-new user request."""
 
     return {
         "user_request": user_request,
@@ -14,10 +26,14 @@ def create_state(user_request, max_steps=5):
         "final_answer": ""
     }
 
+
 def add_memory(state, memory):
+    """Attach one retrieved long-term memory to the current state."""
     state["memories"].append(memory)
 
+
 def add_task(state, task):
+    """Add a new task (starting as "pending") to the task list."""
 
     state["tasks"].append({
         "task": task,
@@ -26,6 +42,8 @@ def add_task(state, task):
 
 
 def complete_task(state, task):
+    """Mark the task matching `task` as completed, tolerating minor
+    wording differences between the planner's text and the stored task."""
 
     # Normalize the task received from the planner.
     # This makes the comparison tolerant of:
@@ -59,6 +77,7 @@ def complete_task(state, task):
 
 
 def add_action(state, action):
+    """Record that a tool/action was invoked during this loop."""
 
     state["actions"].append(action)
 
@@ -68,6 +87,7 @@ def record_observation(
     action,
     observation
 ):
+    """Save what happened when `action` was run, tagged with the step number."""
 
     state["observations"].append({
         "step": state["current_step"],
@@ -77,11 +97,13 @@ def record_observation(
 
 
 def add_result(state, result):
+    """Append a result/outcome string to the running results list."""
 
     state["results"].append(result)
 
 
 def get_pending_tasks(state):
+    """Return the list of task descriptions still marked as pending."""
 
     return [
         item["task"]
@@ -91,6 +113,7 @@ def get_pending_tasks(state):
 
 
 def all_tasks_completed(state):
+    """True only if there is at least one task and every task is completed."""
 
     if not state["tasks"]:
         return False
@@ -102,11 +125,13 @@ def all_tasks_completed(state):
 
 
 def next_step(state):
+    """Advance the step counter after finishing one loop iteration."""
 
     state["current_step"] += 1
 
 
 def can_continue(state):
+    """True while the agent hasn't finished and hasn't hit the step limit."""
 
     return (
         not state["finished"]
@@ -115,6 +140,7 @@ def can_continue(state):
 
 
 def finish(state, answer):
+    """Store the final answer and mark the agent loop as finished."""
 
     state["final_answer"] = answer
     state["finished"] = True

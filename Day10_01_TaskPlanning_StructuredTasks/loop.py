@@ -1,3 +1,14 @@
+"""
+Day10_01_TaskPlanning_StructuredTasks - loop.py
+
+This is the heart of Day10's "structured task planning" agent. Unlike the
+plain ReAct loop from Day09, this loop first decomposes the user's goal
+into an explicit list of sub-tasks (via task_planner.decompose_task), then
+repeatedly asks the planner to pick the next pending task plus a tool to
+complete it, executes that tool, records the observation/result, and marks
+the task complete -- until every task is done or the step budget runs out.
+"""
+
 from state import (
     create_state,
     add_task,
@@ -17,7 +28,10 @@ from task_planner import (
 
 
 def parse_decision(decision):
-
+    # The planner is expected to reply with two lines like:
+    #   TASK: <task text>
+    #   TOOL: <tool name>
+    # This function pulls those two values out of the raw LLM text.
     task = None
     tool = None
 
@@ -52,8 +66,6 @@ def parse_decision(decision):
     return task, tool
 
 
-
-
 async def run_agent_loop(
     user_request,
     planner,
@@ -62,7 +74,7 @@ async def run_agent_loop(
     tools,
     client
 ):
-
+    # Start with a brand-new state for this user request.
     state = create_state(
         user_request
     )
@@ -70,7 +82,8 @@ async def run_agent_loop(
     # --------------------------------
     # Step 1: Decompose the goal
     # --------------------------------
-
+    # Ask the LLM to break the single user request into an ordered list
+    # of smaller, concrete tasks before any tool is ever called.
     planned_tasks = decompose_task(
         user_request
     )
@@ -95,13 +108,13 @@ async def run_agent_loop(
     # --------------------------------
     # Step 2: Autonomous loop
     # --------------------------------
-
+    # Keep looping while there is still budget left (not finished, and
+    # under the max step count).
     while can_continue(state):
 
         # --------------------------------
         # Check whether all tasks are done
         # --------------------------------
-
         if all_tasks_completed(state):
 
             print(
@@ -115,6 +128,7 @@ async def run_agent_loop(
 
             print("TASK: FINISH")
 
+            # All tasks are complete: build the final answer and stop.
             answer = format_answer(
                 state
             )
@@ -134,7 +148,8 @@ async def run_agent_loop(
         # --------------------------------
         # Ask planner for next task
         # --------------------------------
-
+        # The planner looks at the remaining pending tasks and picks the
+        # next one plus the best tool to complete it.
         decision = planner(
             state,
             tools
@@ -149,7 +164,6 @@ async def run_agent_loop(
         # --------------------------------
         # Check FINISH
         # --------------------------------
-
         if decision.strip().upper() == "FINISH":
 
             answer = format_answer(
@@ -166,13 +180,13 @@ async def run_agent_loop(
         # --------------------------------
         # Extract task and tool
         # --------------------------------
-
         task, tool = parse_decision(
             decision
         )
 
         if not task or not tool:
-
+            # The LLM reply didn't match the expected format: record this
+            # as a failed step rather than crashing, and try again.
             add_result(
                 state,
                 "Invalid planner decision."
@@ -187,7 +201,6 @@ async def run_agent_loop(
         # --------------------------------
         # Execute tool
         # --------------------------------
-
         observation = await execute_action(
             tool,
             state,
@@ -202,7 +215,6 @@ async def run_agent_loop(
         # --------------------------------
         # Update state
         # --------------------------------
-
         add_action(
             state,
             tool
@@ -222,7 +234,8 @@ async def run_agent_loop(
         # --------------------------------
         # Mark task complete
         # --------------------------------
-
+        # Only mark the task done if the tool did not report an error;
+        # otherwise leave it pending so the planner reconsiders it.
         if not observation.lower().startswith(
             "error"
         ):

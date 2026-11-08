@@ -1,9 +1,20 @@
+"""
+Day09_02_ReActAgent_FullLoop - agent/planner.py
+
+This is the "Reason" part of the ReAct loop: it asks the LLM to look at
+the user's request plus everything the agent has already done
+(actions/observations from the state), and decide the single next action
+to take -- or return "FINISH" once the request is fully satisfied.
+"""
+
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
 
+# Load environment variables (e.g. BASE_URL, API_KEY, MODEL) from .env.
 load_dotenv()
 
+# Create the AI client used to talk to the LLM provider.
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
     api_key=os.getenv("API_KEY")
@@ -11,7 +22,8 @@ client = OpenAI(
 
 
 def build_tool_descriptions(tools):
-
+    # Turn the list of MCP tool objects into one readable text block the
+    # LLM can read, listing each tool's name and description.
     descriptions = ""
 
     for tool in tools:
@@ -28,10 +40,14 @@ Description:
 
     return descriptions
 
-def planner(state, tools):
 
+def planner(state, tools):
+    # Build the tool list text to embed in the prompt below.
     tool_descriptions = build_tool_descriptions(tools)
 
+    # The prompt gives the LLM full context: the original request, what
+    # has already been done, what was observed, and the available tools --
+    # then asks it to pick exactly one next action (or FINISH).
     prompt = f"""
 You are an AI Planner.
 
@@ -75,5 +91,7 @@ Next Action:
         ]
     )
 
+    # The LLM's reply is expected to be just the tool name or "FINISH".
     return response.choices[0].message.content.strip()
+
 

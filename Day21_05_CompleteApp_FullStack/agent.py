@@ -1,3 +1,14 @@
+"""
+Day 21.05 - Complete App (Full Stack).
+
+This is the final, complete research agent: it plans, researches (search ->
+read -> note -> verify), and reports exactly like earlier lessons, but now
+it also emits structured progress events through an optional
+`progress_callback`. main.py uses that callback to push live updates to the
+browser over Server-Sent Events (SSE), completing the full-stack loop of
+frontend <-> streaming API <-> agent <-> tools.
+"""
+
 from ollama import chat
 
 from tools import (
@@ -12,7 +23,8 @@ from tools import (
 
 MODEL = "qwen3:4b"
 
-
+# Lookup table mapping each tool's name (as the model will request it) to
+# the actual Python function that executes it.
 AVAILABLE_TOOLS = {
     "search_web": search_web,
     "read_webpage": read_webpage,
@@ -21,7 +33,8 @@ AVAILABLE_TOOLS = {
     "verify_finding": verify_finding
 }
 
-
+# The same tools as a list, passed to chat(..., tools=TOOLS) so Ollama
+# knows which functions the model may call and with what signatures.
 TOOLS = [
     search_web,
     read_webpage,
@@ -40,6 +53,8 @@ def generate_report(
     verified research findings.
     """
 
+    # Flatten the verified notes into one text block to give the model as
+    # grounding context (so it only writes about things we actually found).
     research_text = "\n\n".join(
         [
             (
@@ -99,7 +114,8 @@ def research_agent(
     user_request,
     max_steps=100, progress_callback=None
 ):
-
+    # Small helper so every step below can report progress without
+    # checking "if progress_callback" everywhere; no-op when not provided.
     def emit(message):
         if progress_callback:
             progress_callback(message)
@@ -111,6 +127,8 @@ def research_agent(
     findings before it is allowed to finish.
     """
 
+    # Ask the model for a short, ordered research plan before starting the
+    # main tool-calling loop.
     plan = create_research_plan(
         user_request
     )
@@ -120,15 +138,15 @@ def research_agent(
     print("=" * 60)
     print(plan)
 
-    #Emit the plan
+    # Emit the plan so the frontend's SSE stream can display it immediately.
     emit({
     "type": "plan",
     "message": "Research plan created",
     "plan": plan
     })
 
-
-
+    # System message sets strict rules: search, then read, then note, then
+    # verify, and don't stop without at least one verified finding.
     messages = [
         {
             "role": "system",
@@ -174,7 +192,8 @@ def research_agent(
             f"\n--- Agent Step {step + 1} ---"
         )
 
-    # Emit Agent Step here
+        # Emit a step-progress event for the SSE stream before calling the
+        # model, so the UI shows which step is currently running.
         emit({
         "type": "step",
         "step": step + 1,
@@ -183,8 +202,8 @@ def research_agent(
         )
         })
 
-
-
+        # Ask the model what to do next, given the full conversation
+        # history (including prior tool results).
         response = chat(
             model=MODEL,
             messages=messages,
@@ -274,7 +293,8 @@ def research_agent(
                 f"Arguments: {arguments}"
             )
 
-            #Emit the tool name
+            # Emit which tool is about to run so the UI can show live
+            # status to the user.
             emit({
             "type": "tool",
             "tool": tool_name,
@@ -282,7 +302,9 @@ def research_agent(
             f"Using tool: {tool_name}"
             )
             })
-# Emit Verify finding
+
+            # Verification gets its own event type so the frontend can
+            # show a distinct "verifying evidence" indicator.
             if tool_name == "verify_finding":
 
                 emit({
@@ -292,8 +314,8 @@ def research_agent(
                 )
                 })
 
-
-
+            # Look up and run the requested tool with the model-supplied
+            # arguments.
             tool_function = (
                 AVAILABLE_TOOLS.get(
                     tool_name
@@ -314,7 +336,8 @@ def research_agent(
                     result = tool_function(
                         **arguments
                     )
-# emit the tool completion status
+                    # Emit completion only on success, so a failed tool
+                    # call is reflected by the absence of this event.
                     emit({
                     "type": "tool_complete",
                     "tool": tool_name,
@@ -336,6 +359,8 @@ def research_agent(
                         f"Tool error: {e}"
                     )
 
+            # Feed the tool's result back into the conversation so the
+            # model can use it on its next turn.
             messages.append({
                 "role": "tool",
                 "content": str(result),
@@ -356,6 +381,8 @@ def create_research_plan(
     Create a concise research plan.
     """
 
+    # Ask the model to turn the raw user request into an ordered list of
+    # research objectives, used to steer the main agent loop above.
     response = chat(
         model=MODEL,
         messages=[
@@ -384,9 +411,11 @@ def create_research_plan(
     return response.message.content
 
 
-
 def run_agent(request):
-
+    # Synchronous, non-streaming entry point used by the /chat endpoint
+    # (run inside a thread pool since this call blocks). Unlike
+    # research_agent's return value, this always re-derives the final
+    # report from the verified notes collected during the run.
     research_agent(
         request,
         max_steps=100

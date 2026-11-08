@@ -1,3 +1,17 @@
+"""
+Day 18.04 - Comprehensive Tests (Full Suite) - the full research agent.
+
+This is the most complete agent in the course: it plans the research
+(create_research_plan), runs a tool-calling loop that must gather and
+fact-check findings before finishing (research_agent, refusing to stop
+until at least one verified note exists), and finally writes up a
+structured report from only the verified findings (generate_report).
+This file is exercised by the manual demo/check scripts in this folder
+(test_agent.py, test_planner.py, test_tools.py).
+"""
+
+# chat() sends a message list (and optionally tool definitions) to the
+# local Ollama model and gets a response back.
 from ollama import chat
 
 from tools import (
@@ -10,9 +24,12 @@ from tools import (
 )
 
 
+# The local model used for planning, research, verification, and reporting.
 MODEL = "qwen3:4b"
 
 
+# Maps tool names (as the model will refer to them) to the real Python
+# functions we actually call.
 AVAILABLE_TOOLS = {
     "search_web": search_web,
     "read_webpage": read_webpage,
@@ -22,6 +39,8 @@ AVAILABLE_TOOLS = {
 }
 
 
+# The tool function list passed to Ollama so it knows what tools exist
+# and how to call them (their signatures/docstrings describe usage).
 TOOLS = [
     search_web,
     read_webpage,
@@ -40,6 +59,8 @@ def generate_report(
     verified research findings.
     """
 
+    # Flatten the verified notes into a single block of plain text that
+    # we can embed into the report-writing prompt.
     research_text = "\n\n".join(
         [
             (
@@ -51,6 +72,8 @@ def generate_report(
         ]
     )
 
+    # Ask the model to write a structured report using only the verified
+    # findings (it is explicitly told not to invent facts or sources).
     response = chat(
         model=MODEL,
         messages=[
@@ -106,6 +129,7 @@ def research_agent(
     findings before it is allowed to finish.
     """
 
+    # Step 1: get an ordered research plan before doing any tool calls.
     plan = create_research_plan(
         user_request
     )
@@ -115,6 +139,9 @@ def research_agent(
     print("=" * 60)
     print(plan)
 
+    # The system prompt gives the model its overall mission and the
+    # ground rules it must follow (search -> read -> note -> verify, and
+    # never finish with zero verified findings).
     messages = [
         {
             "role": "system",
@@ -154,6 +181,8 @@ def research_agent(
         }
     ]
 
+    # Run the tool-calling loop for at most max_steps turns, so a stuck
+    # model can't run forever.
     for step in range(max_steps):
 
         print(
@@ -166,6 +195,8 @@ def research_agent(
             tools=TOOLS
         )
 
+        # Record the assistant's reply (including any tool calls) in the
+        # conversation history so the model has full context next turn.
         messages.append(
             response.message
         )
@@ -184,6 +215,8 @@ def research_agent(
 
             if verified_notes:
 
+                # The agent is allowed to stop only once it has produced
+                # at least one verified finding.
                 print(
                     "\nResearch complete."
                 )
@@ -197,6 +230,9 @@ def research_agent(
 
             else:
 
+                # The model tried to stop too early; push back with an
+                # instruction forcing it to take another research action
+                # instead of accepting a premature "final answer".
                 print(
                     "\nAgent attempted to finish "
                     "without verified findings."
@@ -249,6 +285,7 @@ def research_agent(
                 f"Arguments: {arguments}"
             )
 
+            # Look up the real Python function for this tool name.
             tool_function = (
                 AVAILABLE_TOOLS.get(
                     tool_name
@@ -257,6 +294,8 @@ def research_agent(
 
             if tool_function is None:
 
+                # Defensive fallback in case the model hallucinates a tool
+                # name that doesn't exist.
                 result = (
                     f"Unknown tool: "
                     f"{tool_name}"
@@ -266,12 +305,16 @@ def research_agent(
 
                 try:
 
+                    # Call the real tool with the arguments the model
+                    # supplied.
                     result = tool_function(
                         **arguments
                     )
 
                 except Exception as e:
 
+                    # Never let a tool crash the whole agent loop; report
+                    # the error back to the model instead so it can adapt.
                     result = {
                         "status": "error",
                         "tool": tool_name,
@@ -282,12 +325,16 @@ def research_agent(
                         f"Tool error: {e}"
                     )
 
+            # Feed the tool's result back into the conversation as a
+            # "tool" message so the model can use it in its next turn.
             messages.append({
                 "role": "tool",
                 "content": str(result),
                 "tool_name": tool_name
             })
 
+    # The loop ran out of steps without the agent returning - report that
+    # explicitly rather than silently returning nothing.
     return (
         "The agent reached its maximum "
         "number of steps before completing "
@@ -302,6 +349,8 @@ def create_research_plan(
     Create a concise research plan.
     """
 
+    # Ask the model (no tools involved) to turn the user's request into a
+    # short, numbered, ordered research plan.
     response = chat(
         model=MODEL,
         messages=[

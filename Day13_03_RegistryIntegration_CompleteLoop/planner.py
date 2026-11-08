@@ -1,11 +1,22 @@
-from openai import OpenAI
-from dotenv import load_dotenv
+"""
+Day13_03 - Registry Integration: The Complete Loop
+====================================================
+This module is the "brain" of the agent: it calls an LLM to decide the
+single next action (which tool to call and with what arguments) based
+on the user's request, the actions already taken, and what was
+observed so far. The tool descriptions are built dynamically from
+whatever tools the registry discovered, which is what makes this
+agent's tool use "dynamic" rather than hard-coded - regardless of
+whether a tool happens to live on a local script or a remote server.
+"""
 import json
 import os
 
+from openai import OpenAI
+from dotenv import load_dotenv
 
+# Load API credentials/config (BASE_URL, API_KEY, MODEL) from a .env file.
 load_dotenv()
-
 
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
@@ -14,11 +25,12 @@ client = OpenAI(
 
 
 def build_tool_descriptions(tools):
-
+    """Turn the list of discovered MCP tools into one readable text block for the prompt."""
     descriptions = ""
 
     for tool in tools:
-
+        # Include the tool's name, description, and input schema so
+        # the LLM knows exactly how to call it.
         descriptions += f"""
 Tool:
 {tool.name}
@@ -35,15 +47,13 @@ Input Schema:
     return descriptions
 
 
-def planner(
-    state,
-    tools
-):
+def planner(state, tools):
+    """Ask the LLM to choose the next action, given the current agent state."""
+    tool_descriptions = build_tool_descriptions(tools)
 
-    tool_descriptions = (
-        build_tool_descriptions(tools)
-    )
-
+    # The prompt gives the LLM the full context (request, history so
+    # far, available tools) and strict rules to keep its reply as
+    # parseable JSON describing exactly one action.
     prompt = f"""
 You are an AI Planner.
 
@@ -105,24 +115,14 @@ Next Action:
     response = client.chat.completions.create(
         model=os.getenv("MODEL"),
         messages=[
-            {
-                "role": "system",
-                "content": "You are an AI planner."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "system", "content": "You are an AI planner."},
+            {"role": "user", "content": prompt}
         ]
     )
 
-    result = (
-        response
-        .choices[0]
-        .message
-        .content
-        .strip()
-    )
+    result = response.choices[0].message.content.strip()
 
+    # The planner's reply must be valid JSON describing one action;
+    # parse it into a dict for the rest of the loop to use.
     return json.loads(result)
 

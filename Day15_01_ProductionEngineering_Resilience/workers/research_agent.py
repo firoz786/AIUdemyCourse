@@ -1,19 +1,19 @@
-#from openai import OpenAI
-#from dotenv import load_dotenv
-#import os
+"""
+Day 15 - Production Engineering & Resilience: Research Worker Agent.
 
-
-#load_dotenv()
-
-
-#client = OpenAI(
- #   base_url=os.getenv("BASE_URL"),
-#    api_key=os.getenv("API_KEY")
-#)
+This file demonstrates another single-purpose worker agent: given a task, it
+asks the LLM (through the resilient, retrying call_llm wrapper) to gather
+concepts, facts, and examples useful for the coding agent that follows it.
+Note it no longer talks to the OpenAI client directly (that logic now lives
+centrally in llm.py), which keeps resilience concerns like retries, timeouts,
+and config in one place instead of duplicated across every worker.
+"""
 
 from llm import call_llm
-def research(task):
 
+
+def research(task):
+    # Build a prompt asking the LLM to research the given task concisely.
     prompt = f"""
 You are a Research Agent.
 
@@ -32,6 +32,7 @@ Keep the response concise and useful
 for another AI agent.
 """
 
+    # Delegate to the shared, retrying LLM caller.
     response = call_llm(
                 messages=[
             {

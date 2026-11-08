@@ -1,10 +1,24 @@
+"""
+Day 15 - Production Engineering & Resilience: Reviewer Worker Agent.
+
+This file demonstrates the quality-gate worker in the multi-agent pipeline:
+given a task and generated code, it asks the LLM (via the resilient call_llm
+wrapper) to review the solution and return a strict JSON verdict - either
+"approved" or "needs_revision" with feedback. The manager uses this
+structured result to decide whether to finish or send the code back to the
+coding agent for another revision pass (bounded by MAX_REVISIONS).
+"""
+
 from llm import call_llm
 import json
+
+
 def review(
     task,
     code
 ):
-
+    # Build a prompt asking the LLM to review the code and return strict JSON
+    # so the manager can parse the decision programmatically.
     prompt = f"""
 You are a Reviewer Agent.
 
@@ -47,6 +61,7 @@ Use "needs_revision" when the solution
 requires a correction.
 """
 
+    # Delegate to the shared, retrying LLM caller.
     response = call_llm(
                 messages=[
             {
@@ -56,8 +71,10 @@ requires a correction.
         ]
     )
 
+    # Clean up whitespace before parsing the expected JSON response.
     result = response.strip()
-    
 
+    # Parse into a dict (e.g. {"status": ..., "feedback": ...}) for the
+    # manager to inspect.
     return json.loads(result)
 
