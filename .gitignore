@@ -12,3 +12,4 @@
 # Ignore virtual environments
 **/venv/
 **/.venv/
+**/.DS_Store
